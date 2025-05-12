@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-bq-performance
+  labels:
+    app: kafka-bq-performance
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kafka-bq-performance
+  template:
+    metadata:
+      labels:
+        app: kafka-bq-performance
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/actuator/prometheus"
+        prometheus.io/port: "8080"
+    spec:
+      containers:
+      - name: kafka-bq-performance
+        image: gcr.io/YOUR_PROJECT_ID/kafka-bq-performance:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "gke"
+        - name: BQ_PROJECT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-bq-config
+              key: bq-project-id
+        - name: BQ_DATASET
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-bq-config
+              key: bq-dataset
+        - name: BQ_TABLE
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-bq-config
+              key: bq-table
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-bq-config
+              key: kafka-bootstrap-servers
+        - name: KAFKA_TOPIC
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-bq-config
+              key: kafka-topic
+        - name: BATCH_SIZE
+          value: "1000"
+        - name: FLUSH_INTERVAL_MS
+          value: "5000"
+        - name: BQ_CREDENTIALS_PATH
+          value: "/etc/gcp-credentials/credentials.json"
+        volumeMounts:
+        - name: gcp-credentials
+          mountPath: "/etc/gcp-credentials"
+          readOnly: true
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: gcp-credentials
+        secret:
+          secretName: gcp-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-bq-performance
+  labels:
+    app: kafka-bq-performance
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: kafka-bq-performance
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-bq-config
+data:
+  bq-project-id: "your-gcp-project-id"
+  bq-dataset: "your_dataset"
+  bq-table: "your_table"
+  kafka-bootstrap-servers: "kafka-broker:9092"
+  kafka-topic: "test-topic"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: kafka-bq-performance
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kafka-bq-performance
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
