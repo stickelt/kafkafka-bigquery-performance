@@ -28,11 +28,11 @@ jobs:
         service_account_key: ${{ secrets.GCP_SA_KEY }}
         project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+    - name: Reset Docker config to avoid Artifact Registry fallback
+      run: echo '{}' > ~/.docker/config.json    
+
     - name: Configure Docker for GCR
       run: gcloud auth configure-docker gcr.io --quiet
-
-    - name: Reset Docker config to avoid Artifact Registry fallback
-      run: echo '{}' > ~/.docker/config.json
 
     - name: Build Docker image
       run: |
