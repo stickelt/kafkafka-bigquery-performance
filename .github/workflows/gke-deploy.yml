@@ -33,17 +33,13 @@ jobs:
 
     - name: Build Docker image
       run: |
-        docker build -t gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA .
+        docker build -t us.gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA .
+        docker push us.gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA
 
     - name: Docker diagnostic info
       run: |
         docker info
         docker system df
-    
-    - name: Push Docker image (verbose)
-      run: |
-        echo "Pushing to gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA"
-        docker push gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA
 
     - name: Get GKE credentials
       uses: google-github-actions/get-gke-credentials@v1
@@ -68,7 +64,7 @@ jobs:
 
     - name: Deploy to GKE
       run: |
-        sed -i.bak "s|gcr.io/PROJECT_ID/kafka-bq-performance:VERSION|gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA|g" ./k8s/deployment.yaml
+        sed -i.bak "s|gcr.io/PROJECT_ID/kafka-bq-performance:VERSION|us.gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA|g" ./k8s/deployment.yaml
         kubectl apply -f ./k8s/deployment.yaml
         kubectl apply -f ./k8s/service.yaml
         kubectl rollout status deployment/kafka-bq-deployment

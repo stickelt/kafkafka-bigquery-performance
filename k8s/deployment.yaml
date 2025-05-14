@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: kafka-bq-container
-          image: gcr.io/jovial-engine-458300-n6/kafka-bq-performance:latest
+          image: us.gcr.io/jovial-engine-458300-n6/kafka-bq-performance:VERSION
           ports:
             - containerPort: 8080
           env:
