@@ -1,0 +1,83 @@
+name: Build and Deploy to GKE
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER_NAME }}
+  GKE_ZONE: ${{ secrets.GKE_ZONE }}
+  IMAGE: kafka-bq-performance
+  BQ_PROJECT_ID: ${{ secrets.BQ_PROJECT_ID }}
+  BQ_DATASET: ${{ secrets.BQ_DATASET }}
+  BQ_TABLE: ${{ secrets.BQ_TABLE }}
+
+jobs:
+  setup-build-publish-deploy:
+    name: Setup, Build, Publish, and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up gcloud CLI
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Configure Docker for GCR
+      run: gcloud auth configure-docker --quiet
+
+    - name: Build Docker image
+      run: |
+        docker build -t gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA .
+
+    - name: Push Docker image
+      run: |
+        docker push gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA
+
+    - name: Get GKE credentials
+      uses: google-github-actions/get-gke-credentials@v1
+      with:
+        cluster_name: ${{ env.GKE_CLUSTER }}
+        location: ${{ env.GKE_ZONE }}
+
+    - name: Create BigQuery credentials Secret
+      run: |
+        echo "${{ secrets.BQ_CREDENTIALS }}" | base64 -d > credentials.json
+        kubectl delete secret bigquery-credentials --ignore-not-found
+        kubectl create secret generic bigquery-credentials --from-file=credentials.json=credentials.json
+        rm credentials.json
+
+    - name: Apply ConfigMap
+      run: |
+        sed -i.bak "s/\${BQ_PROJECT_ID}/${BQ_PROJECT_ID}/g" ./k8s/configmap.yaml
+        sed -i.bak "s/\${BQ_DATASET}/${BQ_DATASET}/g" ./k8s/configmap.yaml
+        sed -i.bak "s/\${BQ_TABLE}/${BQ_TABLE}/g" ./k8s/configmap.yaml
+        kubectl apply -f ./k8s/configmap.yaml
+        rm ./k8s/configmap.yaml.bak
+
+    - name: Deploy to GKE
+      run: |
+        sed -i.bak "s|gcr.io/PROJECT_ID/kafka-bq-performance:VERSION|gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA|g" ./k8s/deployment.yaml
+        kubectl apply -f ./k8s/deployment.yaml
+        kubectl apply -f ./k8s/service.yaml
+        kubectl rollout status deployment/kafka-bq-deployment
+        rm ./k8s/deployment.yaml.bak
+
+    - name: Get External IP
+      run: |
+        echo "Waiting for external IP..."
+        for i in {1..20}; do
+          IP=$(kubectl get svc kafka-bq-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          if [[ -n "$IP" ]]; then
+            echo "Service available at: http://$IP"
+            exit 0
+          fi
+          sleep 10
+        done
+        echo "Failed to retrieve external IP after waiting."
+        exit 1

@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-bq-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-bq-app
+  template:
+    metadata:
+      labels:
+        app: kafka-bq-app
+    spec:
+      containers:
+        - name: kafka-bq-container
+          image: gcr.io/jovial-engine-458300-n6/kafka-bq-performance:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/app/config/credentials.json"
+          volumeMounts:
+            - name: bigquery-credentials
+              mountPath: "/app/config"
+              readOnly: true
+            - name: app-config
+              mountPath: "/app/config/application-prod.properties"
+              subPath: application-prod.properties
+              readOnly: true
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+      volumes:
+        - name: bigquery-credentials
+          secret:
+            secretName: bigquery-credentials
+        - name: app-config
+          configMap:
+            name: kafka-bq-config

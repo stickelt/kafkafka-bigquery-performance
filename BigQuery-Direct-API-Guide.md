@@ -5,7 +5,7 @@ This document explains how to interact with the Direct BigQuery API service with
 
 ## API Configuration
 - Server port: **8081**
-- API Base URL: `http://localhost:8081`
+- API Base URL: `http://localhost:8082`
 
 ## Endpoints
 
