@@ -1,1 +1,1 @@
-rootProject.name = "kafka-bq-performance" 
+rootProject.name = "kafkabq-performance" 

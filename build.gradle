@@ -1,0 +1,54 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '2.7.18'
+    id 'io.spring.dependency-management' version '1.0.15.RELEASE'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '17'
+
+// Set the main class explicitly
+springBoot {
+    mainClass.set(findProperty('mainClass') ?: "com.example.kafkabqperformance.KafkaBqPerformanceApplication")
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://repo.spring.io/milestone' }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.kafka:spring-kafka'
+
+    // Google BigQuery dependencies
+    implementation 'com.google.cloud:google-cloud-bigquery:2.24.4'
+    implementation 'com.google.cloud:google-cloud-bigquerystorage:2.24.0'
+    implementation 'com.google.auth:google-auth-library-oauth2-http:1.16.0'
+
+    // JSON processing
+    implementation 'org.json:json:20230227'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+
+    // Lombok for Java boilerplate reduction
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // Testing dependencies
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// Add a task to run the SimpleBigQueryTest
+task runSimpleTest(type: JavaExec) {
+    group = 'Verification'
+    description = 'Runs the SimpleBigQueryTest to verify BigQuery connectivity'
+    classpath = sourceSets.main.runtimeClasspath
+    main = 'com.example.kafkabqperformance.SimpleBigQueryTest'
+}

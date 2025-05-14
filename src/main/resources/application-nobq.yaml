@@ -1,0 +1,35 @@
+# Configuration for running without Kafka and BigQuery Write API
+spring:
+  application:
+    name: kafka-bq-performance
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+  kafka:
+    bootstrap-servers: dummy:9092
+    consumer:
+      group-id: dummy-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+server:
+  port: 8081
+      
+# BigQuery Configuration - Dummy values
+bigquery:
+  project-id: dummy-project
+  dataset: dummy_dataset
+  table: dummy_table
+  credentials-path: ./config/gcp-credentials.json
+  
+# Performance Configuration
+performance:
+  batch-size: 100
+  flush-interval-ms: 5000
+  
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.example.kafkabqperformance: DEBUG

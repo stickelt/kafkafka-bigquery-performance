@@ -195,7 +195,7 @@ public class LegacyBigQueryWriteService implements BigQueryWriteService {
      * @param attemptCount Current attempt number (1-based)
      * @return Number of successfully written rows after retry
      */
-    private int retryFailedRows(Map<Integer, List<BigQueryError>> insertErrors, int attemptCount) {
+    private int retryFailedRows(Map<Long, List<BigQueryError>> insertErrors, int attemptCount) {
         List<InsertAllRequest.RowToInsert> rowsToRetry = new ArrayList<>();
         List<InsertAllRequest.RowToInsert> originalRows = new ArrayList<>(pendingRows);
         
@@ -203,8 +203,8 @@ public class LegacyBigQueryWriteService implements BigQueryWriteService {
         pendingRows.clear();
         
         // Add back only the rows that failed with retriable errors
-        for (Map.Entry<Integer, List<BigQueryError>> entry : insertErrors.entrySet()) {
-            int rowIndex = entry.getKey();
+        for (Map.Entry<Long, List<BigQueryError>> entry : insertErrors.entrySet()) {
+            int rowIndex = entry.getKey().intValue(); // Convert Long to int
             List<BigQueryError> errors = entry.getValue();
             
             if (isRetriableError(errors)) {
