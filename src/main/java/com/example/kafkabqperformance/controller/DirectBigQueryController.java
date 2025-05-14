@@ -103,7 +103,7 @@ public class DirectBigQueryController {
                 duration,
                 String.format("Direct Storage Write API test completed successfully. %d records written to BigQuery", recordsWritten)
         );
-        
+         
         return ResponseEntity.ok(response);
     }
 
