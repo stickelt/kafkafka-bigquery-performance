@@ -36,23 +36,30 @@ public class WriteApiBigQueryWriteService implements BigQueryWriteService {
     private final AtomicInteger pendingRowCount = new AtomicInteger(0);
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final int flushThreshold;
+    private final int maxRetryAttempts;
 
     @Autowired
     public WriteApiBigQueryWriteService(
             BigQuery bigQuery,
+            BigQueryWriteClient writeClient,
             @Value("${bigquery.project-id}") String projectId,
             @Value("${bigquery.dataset}") String datasetName,
             @Value("${bigquery.table}") String tableName,
-            @Value("${bigquery.flush-threshold:500}") int flushThreshold) throws IOException, Descriptors.DescriptorValidationException, InterruptedException {
+            @Value("${bigquery.flush-threshold:500}") int flushThreshold,
+            @Value("${bigquery.max-retry-attempts:3}") int maxRetryAttempts) throws IOException, Descriptors.DescriptorValidationException, InterruptedException {
         this.bigQuery = bigQuery;
         this.projectId = projectId;
         this.datasetName = datasetName;
         this.tableName = tableName;
         this.flushThreshold = flushThreshold;
-        this.writeClient = BigQueryWriteClient.create();
+        this.maxRetryAttempts = maxRetryAttempts;
+        this.writeClient = writeClient;
         
         // Initialize the write stream
         initializeWriteStream();
+        
+        log.info("Initialized Write API BigQuery service with flush threshold: {}, max retry attempts: {}", 
+                flushThreshold, maxRetryAttempts);
     }
 
     private void initializeWriteStream() throws IOException, Descriptors.DescriptorValidationException, InterruptedException {
@@ -139,6 +146,20 @@ public class WriteApiBigQueryWriteService implements BigQueryWriteService {
             return 0;
         }
         
+        return flushWithRetry(0);
+    }
+    
+    /**
+     * Recursive method to flush pending rows with retry logic
+     * 
+     * @param attemptCount Current attempt number (0-based)
+     * @return Number of successfully written rows
+     */
+    private int flushWithRetry(int attemptCount) {
+        if (pendingRows.isEmpty()) {
+            return 0;
+        }
+        
         try {
             // Write all pending rows in a single batch
             ApiFuture<AppendRowsResponse> future = streamWriter.append(pendingRows);
@@ -155,10 +176,76 @@ public class WriteApiBigQueryWriteService implements BigQueryWriteService {
             pendingRowCount.set(0);
             
             return successCount;
+        } catch (ExecutionException e) {
+            // Check if we should retry based on the error
+            Throwable cause = e.getCause();
+            if (isRetriableError(cause) && attemptCount < maxRetryAttempts) {
+                return retryFlush(attemptCount + 1);
+            } else {
+                log.error("Fatal error flushing records to BigQuery (attempt {}): {}", 
+                          attemptCount + 1, e.getMessage(), e);
+                // Clear the buffer on fatal errors to avoid getting stuck
+                pendingRows.clear();
+                pendingRowCount.set(0);
+                return 0;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Interrupted while flushing to BigQuery", e);
+            return 0;
         } catch (Exception e) {
-            log.error("Error flushing records to BigQuery using Storage Write API", e);
+            log.error("Unexpected error during BigQuery flush", e);
+            // Clear on fatal errors
+            pendingRows.clear();
+            pendingRowCount.set(0);
             return 0;
         }
+    }
+    
+    /**
+     * Perform a retry with exponential backoff
+     * 
+     * @param attemptCount Current attempt number (1-based)
+     * @return Number of successfully written rows
+     */
+    private int retryFlush(int attemptCount) {
+        // Add exponential backoff before retrying
+        try {
+            long backoffMs = Math.min(100 * (1L << (attemptCount - 1)), 5000); // Cap at 5 seconds
+            log.info("Retry attempt {} after {}ms backoff", attemptCount, backoffMs);
+            Thread.sleep(backoffMs);
+            return flushWithRetry(attemptCount);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Interrupted during retry backoff", e);
+            return 0;
+        }
+    }
+    
+    /**
+     * Determine if an error is retriable
+     * 
+     * @param error The error to check
+     * @return true if the error is retriable, false otherwise
+     */
+    private boolean isRetriableError(Throwable error) {
+        String errorMessage = error.getMessage();
+        if (errorMessage == null) {
+            return false;
+        }
+        
+        // Check error messages that indicate retriable conditions
+        return errorMessage.contains("UNAVAILABLE") || 
+               errorMessage.contains("RESOURCE_EXHAUSTED") ||
+               errorMessage.contains("ABORTED") || 
+               errorMessage.contains("DEADLINE_EXCEEDED") ||
+               errorMessage.contains("INTERNAL") ||
+               errorMessage.contains("timeout") ||
+               errorMessage.contains("temporarily unavailable") ||
+               errorMessage.contains("Connection reset") ||
+               errorMessage.contains("Connection closed") ||
+               errorMessage.contains("socket") ||
+               error instanceof IOException;
     }
     
     /**
