@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: kafka-bq-container
-          image: gcr.io/PROJECT_ID/kafka-bq-performance:VERSION
+          image: us-docker.pkg.dev/PROJECT_ID/kafka-bq-images/kafka-bq-performance:VERSION
           ports:
             - containerPort: 8080
           env:
@@ -25,10 +25,6 @@ spec:
           volumeMounts:
             - name: bigquery-credentials
               mountPath: "/app/config"
-              readOnly: true
-            - name: app-config
-              mountPath: "/app/config/application-prod.properties"
-              subPath: application-prod.properties
               readOnly: true
           resources:
             requests:
@@ -41,6 +37,3 @@ spec:
         - name: bigquery-credentials
           secret:
             secretName: bigquery-credentials
-        - name: app-config
-          configMap:
-            name: kafka-bq-config
