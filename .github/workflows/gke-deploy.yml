@@ -29,7 +29,10 @@ jobs:
         project_id: ${{ secrets.GCP_PROJECT_ID }}
 
     - name: Configure Docker for GCR
-      run: gcloud auth configure-docker --quiet
+      run: gcloud auth configure-docker gcr.io --quiet
+
+    - name: Reset Docker config to avoid Artifact Registry fallback
+      run: echo '{}' > ~/.docker/config.json
 
     - name: Build Docker image
       run: |
