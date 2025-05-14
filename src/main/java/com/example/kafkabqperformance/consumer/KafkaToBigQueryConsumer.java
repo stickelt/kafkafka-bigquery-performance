@@ -1,7 +1,7 @@
 package com.example.kafkabqperformance.consumer;
 
 import com.example.kafkabqperformance.model.KafkaMessage;
-import com.example.kafkabqperformance.monitoring.PerformanceMonitor;
+// import com.example.kafkabqperformance.monitoring.PerformanceMonitor;
 import com.example.kafkabqperformance.service.BigQueryWriteService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,7 +25,7 @@ public class KafkaToBigQueryConsumer {
     private final ObjectMapper objectMapper;
     private final BigQueryWriteService legacyBigQueryWriteService;
     private final BigQueryWriteService writeApiBigQueryWriteService;
-    private final PerformanceMonitor performanceMonitor;
+    // private final PerformanceMonitor performanceMonitor;
     private final int batchSize;
     
     private final ConcurrentLinkedQueue<KafkaMessage> legacyQueue = new ConcurrentLinkedQueue<>();
@@ -40,12 +40,12 @@ public class KafkaToBigQueryConsumer {
             ObjectMapper objectMapper,
             @Qualifier("legacyBigQueryWriteService") BigQueryWriteService legacyBigQueryWriteService,
             @Qualifier("writeApiBigQueryWriteService") BigQueryWriteService writeApiBigQueryWriteService,
-            PerformanceMonitor performanceMonitor,
+            // PerformanceMonitor performanceMonitor,
             @Value("${performance.batch-size}") int batchSize) {
         this.objectMapper = objectMapper;
         this.legacyBigQueryWriteService = legacyBigQueryWriteService;
         this.writeApiBigQueryWriteService = writeApiBigQueryWriteService;
-        this.performanceMonitor = performanceMonitor;
+        // this.performanceMonitor = performanceMonitor;
         this.batchSize = batchSize;
     }
 
@@ -65,11 +65,11 @@ public class KafkaToBigQueryConsumer {
             
             // Process in batches if we've reached the batch size
             if (legacyQueue.size() >= batchSize) {
-                processBatch(legacyQueue, legacyBigQueryWriteService, "Legacy WriteAll", legacyProcessed);
+                processBatch(legacyQueue, legacyBigQueryWriteService, true);
             }
             
             if (writeApiQueue.size() >= batchSize) {
-                processBatch(writeApiQueue, writeApiBigQueryWriteService, "Write API", writeApiProcessed);
+                processBatch(writeApiQueue, writeApiBigQueryWriteService, false);
             }
             
         } catch (JsonProcessingException e) {
@@ -77,33 +77,37 @@ public class KafkaToBigQueryConsumer {
         }
     }
     
-    private void processBatch(ConcurrentLinkedQueue<KafkaMessage> queue, 
-                             BigQueryWriteService service, 
-                             String serviceName,
-                             AtomicInteger counter) {
-        List<KafkaMessage> batch = new ArrayList<>(batchSize);
-        KafkaMessage message;
-        
-        // Drain up to batchSize messages from the queue
-        while (batch.size() < batchSize && (message = queue.poll()) != null) {
-            batch.add(message);
+    private void processBatch(ConcurrentLinkedQueue<KafkaMessage> queue, BigQueryWriteService service, boolean isLegacy) {
+        if (queue.isEmpty()) {
+            return;
         }
         
-        if (!batch.isEmpty()) {
+        try {
             long startTime = System.currentTimeMillis();
-            int written = service.writeToBigQuery(batch);
-            int flushed = service.flush();
-            long endTime = System.currentTimeMillis();
-            long duration = endTime - startTime;
             
-            counter.addAndGet(flushed);
+            // Convert queue to list for processing
+            List<KafkaMessage> batch = new ArrayList<>(queue);
+            queue.clear(); // Clear the queue after copying to list
+            
+            service.writeToBigQuery(batch);
+            int flushed = service.flush();
+            
+            long duration = System.currentTimeMillis() - startTime;
+            String serviceType = isLegacy ? "Legacy" : "Write API";
+            
+            log.debug("{}: Processed batch of {} messages in {} ms", serviceType, flushed, duration);
             
             // Record performance metrics
-            boolean isLegacy = serviceName.contains("Legacy");
-            performanceMonitor.recordBatchPerformance(isLegacy, flushed, duration);
+            // performanceMonitor.recordBatchPerformance(isLegacy, flushed, duration);
             
-            log.info("{}: Processed batch of {} messages in {} ms. Total processed: {}", 
-                    serviceName, flushed, duration, counter.get());
+            // Update counters
+            if (isLegacy) {
+                legacyProcessed.addAndGet(flushed);
+            } else {
+                writeApiProcessed.addAndGet(flushed);
+            }
+        } catch (Exception e) {
+            log.error("Error processing batch with {}", isLegacy ? "Legacy service" : "Write API service", e);
         }
     }
     
@@ -111,11 +115,11 @@ public class KafkaToBigQueryConsumer {
     public void scheduledFlush() {
         // Flush any remaining messages in the queues
         if (!legacyQueue.isEmpty()) {
-            processBatch(legacyQueue, legacyBigQueryWriteService, "Legacy WriteAll (scheduled)", legacyProcessed);
+            processBatch(legacyQueue, legacyBigQueryWriteService, true);
         }
         
         if (!writeApiQueue.isEmpty()) {
-            processBatch(writeApiQueue, writeApiBigQueryWriteService, "Write API (scheduled)", writeApiProcessed);
+            processBatch(writeApiQueue, writeApiBigQueryWriteService, false);
         }
     }
 }

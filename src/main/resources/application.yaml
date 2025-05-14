@@ -1,34 +1,32 @@
 spring:
   application:
     name: kafka-bq-performance
+  main:
+    allow-bean-definition-overriding: true
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
-      group-id: ${KAFKA_CONSUMER_GROUP_ID:bq-performance-group}
-      auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
-# BigQuery Configuration
+# Common BigQuery Configuration
 bigquery:
   project-id: ${BQ_PROJECT_ID:your-gcp-project-id}
   dataset: ${BQ_DATASET:your_dataset}
   table: ${BQ_TABLE:your_table}
-  # Path to the GCP credentials JSON file
   credentials-path: ${BQ_CREDENTIALS_PATH:/path/to/your/credentials.json}
 
 # Kafka Topics Configuration
 kafka:
   topic: ${KAFKA_TOPIC:test-topic}
   
-# Performance Configuration
+# Default Performance Configuration
 performance:
   batch-size: ${BATCH_SIZE:1000}
   flush-interval-ms: ${FLUSH_INTERVAL_MS:5000}
   
-# Logging Configuration
+# Default Logging Configuration
 logging:
   level:
     root: INFO
-    com.example.kafkabqperformance: DEBUG
+    com.example.kafkabqperformance: INFO
     org.apache.kafka: WARN

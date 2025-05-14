@@ -1,13 +1,99 @@
-# Kafka to BigQuery Performance Comparison
+# Kafka to BigQuery Performance Testing Tool
 
-This Spring Boot application demonstrates and compares two different approaches for streaming Kafka messages to BigQuery:
+This application tests the performance of writing messages from Kafka to BigQuery using different APIs.
 
-1. **Legacy WriteAll API** - Using the traditional BigQuery client library with `insertAll` method
-2. **Storage Write API** - Using the newer BigQuery Storage Write API for improved performance
+## Build System
 
-## Deployment Options
+This project uses Gradle with Kotlin DSL for build configuration.
 
-This application can be deployed as a standalone Spring Boot application or containerized and deployed to Kubernetes environments like Google Kubernetes Engine (GKE).
+### Gradle Wrapper Commands
+
+- Build the project:
+  ```bash
+  ./gradlew build
+  ```
+
+- Run the application:
+  ```bash
+  ./gradlew bootRun
+  ```
+
+- Run with a specific profile:
+  ```bash
+  ./gradlew bootRun --args='--spring.profiles.active=local'
+  ```
+
+- Execute tests:
+  ```bash
+  ./gradlew test
+  ```
+
+## Environment Configuration
+
+This application uses Spring profiles to manage environment-specific configurations.
+
+### Available Profiles:
+
+- **local**: For local development and testing
+- **dev**: For development environment
+- **Add more profiles as needed**: qa, staging, prod, etc.
+
+### Running with Different Profiles:
+
+1. **Local Development**:
+   ```
+   ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+   ```
+
+2. **Development Environment**:
+   ```
+   ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+   ```
+
+3. **Multiple Profiles** (applying both local and a custom profile):
+   ```
+   ./mvnw spring-boot:run -Dspring-boot.run.profiles=local,custom
+   ```
+
+### Environment Variables:
+
+Each profile can use environment variables to override settings:
+
+- For BigQuery:
+  - `BQ_PROJECT_ID`: Google Cloud project ID
+  - `BQ_DATASET`: BigQuery dataset name
+  - `BQ_TABLE`: BigQuery table name
+  - `BQ_CREDENTIALS_PATH`: Path to the service account credentials file
+
+- For performance testing:
+  - `BATCH_SIZE`: Number of messages per batch
+  - `FLUSH_INTERVAL_MS`: Flush interval in milliseconds
+
+## Adding New Environments:
+
+To add a new environment:
+
+1. Create a new profile file: `application-{env}.yaml` (replace {env} with environment name)
+2. Configure the necessary settings for that environment
+3. Run the application with the corresponding profile
+
+Example for adding a production environment:
+1. Create `application-prod.yaml`
+2. Run with: `./mvnw spring-boot:run -Dspring-boot.run.profiles=prod`
+
+## API Endpoints
+
+- `GET /api/health`: Check if the service is running
+- `POST /api/test-legacy`: Test the legacy BigQuery write method
+- `POST /api/test-write-api`: Test the Storage Write API method
+
+Example payload:
+```json
+{
+  "messageCount": 1000,
+  "batchSize": 100
+}
+```
 
 ## Features
 
@@ -70,36 +156,6 @@ java -jar build/libs/kafka-bq-performance-0.0.1-SNAPSHOT.jar \
   --bigquery.table=your_table \
   --bigquery.credentials-path=/path/to/credentials.json \
   --kafka.topic=your-topic
-```
-
-## API Endpoints
-
-### Health Check
-
-```
-GET /api/health
-```
-
-### Test Legacy WriteAll API
-
-```
-POST /api/test-legacy
-
-{
-  "messageCount": 10000,
-  "batchSize": 500
-}
-```
-
-### Test Storage Write API
-
-```
-POST /api/test-write-api
-
-{
-  "messageCount": 10000,
-  "batchSize": 500
-}
 ```
 
 ## Performance Monitoring

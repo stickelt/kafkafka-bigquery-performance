@@ -1,0 +1,27 @@
+# Development environment configuration
+spring:
+  application:
+    name: kafka-bq-performance
+  kafka:
+    bootstrap-servers: dev-kafka:9092
+    consumer:
+      group-id: bq-performance-group-dev
+      auto-offset-reset: earliest
+
+# BigQuery Configuration - Dev Environment
+bigquery:
+  project-id: ${DEV_BQ_PROJECT_ID:jovial-engine-458300-n6}
+  dataset: ${DEV_BQ_DATASET:kafka_bq_transactions}
+  table: ${DEV_BQ_TABLE:kafka_messages}
+  credentials-path: ${DEV_BQ_CREDENTIALS_PATH}
+
+# Performance Configuration
+performance:
+  batch-size: 500
+  flush-interval-ms: 5000
+  
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.example.kafkabqperformance: DEBUG 
