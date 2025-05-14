@@ -35,9 +35,11 @@ jobs:
       run: |
         docker build -t gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA .
 
-    - name: Docker whoami test
-      run: docker info && docker system df && docker login gcr.io
-      
+    - name: Docker diagnostic info
+      run: |
+        docker info
+        docker system df
+    
     - name: Push Docker image (verbose)
       run: |
         echo "Pushing to gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA"
