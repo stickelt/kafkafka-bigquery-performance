@@ -44,15 +44,31 @@ public class LegacyBigQueryWriteService implements BigQueryWriteService {
         
         for (KafkaMessage message : messages) {
             Map<String, Object> rowContent = new HashMap<>();
-            rowContent.put("id", message.getId());
-            rowContent.put("message", message.getMessage());
-            rowContent.put("timestamp", message.getTimestamp() != null ? message.getTimestamp().toString() : Instant.now().toString());
-            rowContent.put("source", message.getSource());
-            rowContent.put("priority", message.getPriority());
-            rowContent.put("insert_time", Instant.now().toString());
+            // Map to the actual BigQuery schema
+            rowContent.put("uuid", message.getId());
+            rowContent.put("received_timestamp", Instant.now().toString());
+            rowContent.put("raw_payload", message.getMessage());
+            rowContent.put("processing_timestamp", Instant.now().toString());
+            rowContent.put("http_status_code", 200); // Default success
+            
+            // Create the nested api_response record
+            Map<String, Object> apiResponse = new HashMap<>();
+            apiResponse.put("rx_data_id", message.getPriority() != null ? message.getPriority() : 0);
+            apiResponse.put("errors", new ArrayList<String>());
+            apiResponse.put("submitted_date", message.getTimestamp() != null ? message.getTimestamp().toString() : Instant.now().toString());
+            apiResponse.put("process_date", Instant.now().toString());
+            apiResponse.put("aspn_id", 1000); // Default value
+            
+            rowContent.put("api_response", apiResponse);
+            rowContent.put("submitted_date", message.getTimestamp() != null ? message.getTimestamp().toString() : Instant.now().toString());
+            rowContent.put("process_date", Instant.now().toString());
+            rowContent.put("aspn_id", 1000); // Default value
+            rowContent.put("rx_data_id", message.getPriority() != null ? message.getPriority() : 0);
             
             InsertAllRequest.RowToInsert row = InsertAllRequest.RowToInsert.of(message.getId(), rowContent);
             pendingRows.add(row);
+            
+            log.debug("Mapped message to BigQuery schema: {}", rowContent);
         }
         
         pendingRowCount.addAndGet(messages.size());

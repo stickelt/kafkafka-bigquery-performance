@@ -57,13 +57,17 @@ public class DirectBigQueryController {
             legacyBigQueryWriteService.writeToBigQuery(kafkaMessages);
         }
         
+        // Flush to ensure data is sent to BigQuery
+        int recordsWritten = legacyBigQueryWriteService.flush();
+        logger.info("Legacy API: Flushed {} records to BigQuery", recordsWritten);
+        
         long duration = System.currentTimeMillis() - startTime;
         
         TestResponse response = new TestResponse(
                 request.getMessageCount(),
                 request.getBatchSize(),
                 duration,
-                "Direct Legacy API test completed successfully"
+                String.format("Direct Legacy API test completed successfully. %d records written to BigQuery", recordsWritten)
         );
         
         return ResponseEntity.ok(response);
@@ -87,13 +91,17 @@ public class DirectBigQueryController {
             writeApiBigQueryWriteService.writeToBigQuery(kafkaMessages);
         }
         
+        // Flush to ensure data is sent to BigQuery
+        int recordsWritten = writeApiBigQueryWriteService.flush();
+        logger.info("Storage Write API: Flushed {} records to BigQuery", recordsWritten);
+        
         long duration = System.currentTimeMillis() - startTime;
         
         TestResponse response = new TestResponse(
                 request.getMessageCount(),
                 request.getBatchSize(),
                 duration,
-                "Direct Storage Write API test completed successfully"
+                String.format("Direct Storage Write API test completed successfully. %d records written to BigQuery", recordsWritten)
         );
         
         return ResponseEntity.ok(response);

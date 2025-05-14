@@ -86,16 +86,31 @@ public class WriteApiBigQueryWriteService implements BigQueryWriteService {
             for (KafkaMessage message : messages) {
                 // Create JSON using ObjectMapper for proper escaping and formatting
                 ObjectNode jsonNode = objectMapper.createObjectNode();
-                jsonNode.put("id", message.getId());
-                jsonNode.put("message", message.getMessage());
-                jsonNode.put("timestamp", message.getTimestamp() != null ? message.getTimestamp().toString() : Instant.now().toString());
-                jsonNode.put("source", message.getSource());
-                jsonNode.put("priority", message.getPriority());
-                jsonNode.put("insert_time", Instant.now().toString());
+                jsonNode.put("uuid", message.getId());
+                jsonNode.put("received_timestamp", Instant.now().toString());
+                jsonNode.put("raw_payload", message.getMessage());
+                jsonNode.put("processing_timestamp", Instant.now().toString());
+                jsonNode.put("http_status_code", 200);
+                
+                // Create the nested api_response object
+                ObjectNode apiResponse = objectMapper.createObjectNode();
+                apiResponse.put("rx_data_id", message.getPriority() != null ? message.getPriority() : 0);
+                apiResponse.putArray("errors"); // Empty array
+                apiResponse.put("submitted_date", message.getTimestamp() != null ? message.getTimestamp().toString() : Instant.now().toString());
+                apiResponse.put("process_date", Instant.now().toString());
+                apiResponse.put("aspn_id", 1000);
+                
+                jsonNode.set("api_response", apiResponse);
+                jsonNode.put("submitted_date", message.getTimestamp() != null ? message.getTimestamp().toString() : Instant.now().toString());
+                jsonNode.put("process_date", Instant.now().toString());
+                jsonNode.put("aspn_id", 1000);
+                jsonNode.put("rx_data_id", message.getPriority() != null ? message.getPriority() : 0);
                 
                 // Convert to JSON string
                 String jsonString = objectMapper.writeValueAsString(jsonNode);
                 pendingMessages.add(jsonString);
+                
+                log.debug("Mapped message to BigQuery schema: {}", jsonString);
             }
             
             pendingRowCount.addAndGet(messages.size());

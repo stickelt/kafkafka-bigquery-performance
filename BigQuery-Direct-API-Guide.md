@@ -62,41 +62,55 @@ Invoke-WebRequest -Uri "http://localhost:8081/api/direct/test-write-api" -Method
 
 ### Querying BigQuery from PowerShell
 ```powershell
-# View latest 10 records
-bq query --use_legacy_sql=false 'SELECT * FROM `jovial-engine-458300-n6.kafka_bq_transactions.kafka_messages` LIMIT 10'
+# Show table schema
+bq show --schema jovial-engine-458300-n6:kafka_bq_transactions.kafka_messages
+
+# View latest records
+bq query --use_legacy_sql=false 'SELECT * FROM `jovial-engine-458300-n6.kafka_bq_transactions.kafka_messages` ORDER BY received_timestamp DESC LIMIT 10'
 
 # Count records
 bq query --use_legacy_sql=false 'SELECT COUNT(*) as record_count FROM `jovial-engine-458300-n6.kafka_bq_transactions.kafka_messages`'
+
+# Find PowerShell-inserted records
+bq query --use_legacy_sql=false 'SELECT * FROM `jovial-engine-458300-n6.kafka_bq_transactions.kafka_messages` WHERE uuid LIKE "ps-%" ORDER BY received_timestamp DESC LIMIT 5'
 ```
 
 ### Inserting Records Directly to BigQuery
 ```powershell
-# Using bq command
-echo '{"id":"powershell-123","message":"Test from PowerShell","timestamp":"2025-05-13T20:00:00Z","source":"powershell","priority":1}' > temp_record.json
-bq load --source_format=NEWLINE_DELIMITED_JSON jovial-engine-458300-n6:kafka_bq_transactions.kafka_messages temp_record.json id:string,message:string,timestamp:timestamp,source:string,priority:integer
-Remove-Item temp_record.json
-
-# Using Google Cloud REST API
+# Set credentials first
 $env:GOOGLE_APPLICATION_CREDENTIALS="./config/gcp-credentials.json"
+
+# Insert a single record using REST API
 $projectId = "jovial-engine-458300-n6"
 $datasetId = "kafka_bq_transactions"
 $tableId = "kafka_messages"
 
 $data = @{
-  "kind" = "bigquery#tableDataInsertAllRequest"
   "rows" = @(
     @{
       "json" = @{
-        "id" = "ps-$(Get-Random)"
-        "message" = "Direct insert from PowerShell"
-        "timestamp" = (Get-Date).ToString("o")
-        "source" = "powershell-direct"
-        "priority" = 1
+        "uuid" = "ps-" + (Get-Random)
+        "received_timestamp" = (Get-Date (Get-Date).ToUniversalTime() -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
+        "raw_payload" = "Test payload from PowerShell"
+        "processing_timestamp" = (Get-Date (Get-Date).ToUniversalTime() -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
+        "http_status_code" = 200
+        "api_response" = @{
+          "rx_data_id" = 12345
+          "errors" = @()
+          "submitted_date" = (Get-Date (Get-Date).ToUniversalTime() -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
+          "process_date" = (Get-Date (Get-Date).ToUniversalTime() -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
+          "aspn_id" = 67890
+        }
+        "submitted_date" = (Get-Date (Get-Date).ToUniversalTime() -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
+        "process_date" = (Get-Date (Get-Date).ToUniversalTime() -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
+        "aspn_id" = 67890
+        "rx_data_id" = 12345
       }
     }
   )
 }
 
 $body = $data | ConvertTo-Json -Depth 10
-Invoke-RestMethod -Method Post -Uri "https://bigquery.googleapis.com/bigquery/v2/projects/$projectId/datasets/$datasetId/tables/$tableId/insertAll" -Body $body -ContentType "application/json" -Headers @{Authorization = "Bearer $(gcloud auth print-access-token)"}
+$token = & gcloud auth print-access-token
+Invoke-RestMethod -Method Post -Uri "https://bigquery.googleapis.com/bigquery/v2/projects/$projectId/datasets/$datasetId/tables/$tableId/insertAll" -Body $body -ContentType "application/json" -Headers @{Authorization = "Bearer $token"}
 ``` 
