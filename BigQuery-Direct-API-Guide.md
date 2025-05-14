@@ -38,11 +38,29 @@ Request body:
 }
 ```
 
+## Important Implementation Note
+The application uses a buffered write approach. Records are first queued in memory and then written in batches by calling `flush()`. The controller has been updated to always call `flush()` after processing messages, ensuring data is committed to BigQuery.
+
+## Testing Scripts
+
+### Quick Test Script (testbq.ps1)
+A simple script that tests both APIs with a small number of records:
+```powershell
+.\testbq.ps1
+```
+
+### Benchmark Script (benchmark.ps1)
+A comprehensive benchmark that compares both APIs with different record counts and batch sizes:
+```powershell
+.\benchmark.ps1
+```
+The benchmark generates a CSV file with performance metrics.
+
 ## PowerShell Commands
 
 ### Starting the Application
 ```powershell
-cd 2025Stuff\kafkafka-bigquery-performance
+cd C:\dev\2025Stuff\kafkafka-bigquery-performance
 .\gradlew.bat bootRun --args='--spring.profiles.active=nokafka'
 ```
 
@@ -113,4 +131,9 @@ $data = @{
 $body = $data | ConvertTo-Json -Depth 10
 $token = & gcloud auth print-access-token
 Invoke-RestMethod -Method Post -Uri "https://bigquery.googleapis.com/bigquery/v2/projects/$projectId/datasets/$datasetId/tables/$tableId/insertAll" -Body $body -ContentType "application/json" -Headers @{Authorization = "Bearer $token"}
-``` 
+```
+
+## Troubleshooting
+- **No records appearing in BigQuery**: Check if the `flush()` method is being called. Without this, records remain in memory but aren't committed to BigQuery.
+- **Authentication errors**: Verify that the gcp-credentials.json file is correctly placed in the config directory.
+- **Connection errors**: Ensure the application is running and accessible at the correct port before running any test scripts. 
