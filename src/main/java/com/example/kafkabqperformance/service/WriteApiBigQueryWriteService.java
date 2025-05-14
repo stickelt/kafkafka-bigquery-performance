@@ -1,20 +1,15 @@
 package com.example.kafkabqperformance.service;
 
 import com.example.kafkabqperformance.model.KafkaMessage;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.core.ApiFuture;
-import com.google.api.core.ApiFutures;
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.TableId;
 import com.google.cloud.bigquery.storage.v1.*;
 import com.google.protobuf.Descriptors;
 import lombok.extern.slf4j.Slf4j;
-import org.json.JSONArray;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PreDestroy;
@@ -23,6 +18,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Service("writeApiBigQueryWriteService")
@@ -34,24 +31,24 @@ public class WriteApiBigQueryWriteService implements BigQueryWriteService {
     private final String datasetName;
     private final String tableName;
     private final BigQueryWriteClient writeClient;
-    private WriteStream writeStream;
     private JsonStreamWriter streamWriter;
-    private final List<String> pendingMessages = new ArrayList<>();
+    private final List<JsonObject> pendingRows = new ArrayList<>();
     private final AtomicInteger pendingRowCount = new AtomicInteger(0);
-    private final ObjectMapper objectMapper;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final int flushThreshold;
 
     @Autowired
     public WriteApiBigQueryWriteService(
             BigQuery bigQuery,
-            ObjectMapper objectMapper,
             @Value("${bigquery.project-id}") String projectId,
             @Value("${bigquery.dataset}") String datasetName,
-            @Value("${bigquery.table}") String tableName) throws IOException, Descriptors.DescriptorValidationException, InterruptedException {
+            @Value("${bigquery.table}") String tableName,
+            @Value("${bigquery.flush-threshold:500}") int flushThreshold) throws IOException, Descriptors.DescriptorValidationException, InterruptedException {
         this.bigQuery = bigQuery;
-        this.objectMapper = objectMapper;
         this.projectId = projectId;
         this.datasetName = datasetName;
         this.tableName = tableName;
+        this.flushThreshold = flushThreshold;
         this.writeClient = BigQueryWriteClient.create();
         
         // Initialize the write stream
@@ -59,21 +56,25 @@ public class WriteApiBigQueryWriteService implements BigQueryWriteService {
     }
 
     private void initializeWriteStream() throws IOException, Descriptors.DescriptorValidationException, InterruptedException {
-        TableName parentTable = TableName.of(projectId, datasetName, tableName);
-        
-        // Create a write stream for the specified table
-        writeStream = writeClient.createWriteStream(
-                CreateWriteStreamRequest.newBuilder()
-                        .setParent(parentTable.toString())
-                        .setWriteStream(WriteStream.newBuilder().setType(WriteStream.Type.COMMITTED).build())
-                        .build()
-        );
-        
-        // Create a JSON stream writer
-        streamWriter = JsonStreamWriter.newBuilder(
-                writeStream.getName(), writeStream.getTableSchema()).build();
-        
-        log.info("Initialized BigQuery Storage Write API stream for {}.{}", datasetName, tableName);
+        try {
+            // Format default stream name directly
+            String defaultStreamName = String.format("projects/%s/datasets/%s/tables/%s", projectId, datasetName, tableName);
+            
+            // Get table schema directly from BigQuery
+            TableId tableId = TableId.of(datasetName, tableName);
+            com.google.cloud.bigquery.Table table = bigQuery.getTable(tableId);
+            if (table == null) {
+                throw new IOException("Table not found: " + tableId.toString());
+            }
+            
+            // Create stream writer directly with default stream
+            streamWriter = JsonStreamWriter.newBuilder(defaultStreamName, table.getDefinition().getSchema()).build();
+            
+            log.info("Initialized BigQuery Storage Write API stream for {}.{} using default stream", datasetName, tableName);
+        } catch (Exception e) {
+            log.error("Failed to initialize write stream", e);
+            throw e;
+        }
     }
 
     @Override
@@ -84,40 +85,49 @@ public class WriteApiBigQueryWriteService implements BigQueryWriteService {
 
         try {
             for (KafkaMessage message : messages) {
-                // Create JSON using ObjectMapper for proper escaping and formatting
-                ObjectNode jsonNode = objectMapper.createObjectNode();
-                jsonNode.put("uuid", message.getId());
-                jsonNode.put("received_timestamp", Instant.now().toString());
-                jsonNode.put("raw_payload", message.getMessage());
-                jsonNode.put("processing_timestamp", Instant.now().toString());
-                jsonNode.put("http_status_code", 200);
+                // Create a JsonObject directly
+                JsonObject jsonRow = JsonObject.newBuilder()
+                    .put("uuid", message.getId())
+                    .put("received_timestamp", Instant.now().toString())
+                    .put("raw_payload", message.getMessage())
+                    .put("processing_timestamp", Instant.now().toString())
+                    .put("http_status_code", 200)
+                    .build();
                 
                 // Create the nested api_response object
-                ObjectNode apiResponse = objectMapper.createObjectNode();
-                apiResponse.put("rx_data_id", message.getPriority() != null ? message.getPriority() : 0);
-                apiResponse.putArray("errors"); // Empty array
-                apiResponse.put("submitted_date", message.getTimestamp() != null ? message.getTimestamp().toString() : Instant.now().toString());
-                apiResponse.put("process_date", Instant.now().toString());
-                apiResponse.put("aspn_id", 1000);
+                JsonObject apiResponse = JsonObject.newBuilder()
+                    .put("rx_data_id", message.getPriority() != null ? message.getPriority() : 0)
+                    .put("errors", JsonArray.newBuilder().build()) // Empty array
+                    .put("submitted_date", message.getTimestamp() != null ? message.getTimestamp().toString() : Instant.now().toString())
+                    .put("process_date", Instant.now().toString())
+                    .put("aspn_id", 1000)
+                    .build();
                 
-                jsonNode.set("api_response", apiResponse);
-                jsonNode.put("submitted_date", message.getTimestamp() != null ? message.getTimestamp().toString() : Instant.now().toString());
-                jsonNode.put("process_date", Instant.now().toString());
-                jsonNode.put("aspn_id", 1000);
-                jsonNode.put("rx_data_id", message.getPriority() != null ? message.getPriority() : 0);
+                // Put the api_response as a nested object
+                JsonObject finalRow = JsonObject.newBuilder(jsonRow)
+                    .put("api_response", apiResponse)
+                    .put("submitted_date", message.getTimestamp() != null ? message.getTimestamp().toString() : Instant.now().toString())
+                    .put("process_date", Instant.now().toString())
+                    .put("aspn_id", 1000)
+                    .put("rx_data_id", message.getPriority() != null ? message.getPriority() : 0)
+                    .build();
                 
-                // Convert to JSON string
-                String jsonString = objectMapper.writeValueAsString(jsonNode);
-                pendingMessages.add(jsonString);
-                
-                log.debug("Mapped message to BigQuery schema: {}", jsonString);
+                pendingRows.add(finalRow);
+                log.debug("Mapped message to BigQuery schema JSON");
             }
             
-            pendingRowCount.addAndGet(messages.size());
-            log.debug("Added {} messages to pending rows. Total pending: {}", messages.size(), pendingRowCount.get());
+            int currentCount = pendingRowCount.addAndGet(messages.size());
+            log.debug("Added {} messages to pending rows. Total pending: {}", messages.size(), currentCount);
+            
+            // Auto-flush when threshold is reached
+            if (currentCount >= flushThreshold) {
+                log.info("Auto-flush triggered: pending count ({}) exceeded threshold ({})", 
+                        currentCount, flushThreshold);
+                flushAsync();
+            }
             
             return messages.size();
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             log.error("Error converting messages to JSON", e);
             return 0;
         }
@@ -125,46 +135,73 @@ public class WriteApiBigQueryWriteService implements BigQueryWriteService {
 
     @Override
     public int flush() {
-        if (pendingMessages.isEmpty()) {
+        if (pendingRows.isEmpty()) {
             return 0;
         }
         
         try {
-            // Convert List<String> to JSONArray before passing to append
-            JSONArray jsonArray = new JSONArray();
-            for (String message : pendingMessages) {
-                jsonArray.put(new JSONObject(message));
-            }
-            
-            // Append the JSON data to the stream
-            ApiFuture<AppendRowsResponse> future = streamWriter.append(jsonArray);
+            // Write all pending rows in a single batch
+            ApiFuture<AppendRowsResponse> future = streamWriter.append(pendingRows);
             
             // Wait for the append operation to complete
             AppendRowsResponse response = future.get();
+            int successCount = pendingRows.size();
             
-            int successCount = pendingRowCount.get();
             log.info("BigQuery Storage Write API: Flushed {} records successfully. Offset: {}", 
                     successCount, response.getAppendResult().getOffset().getValue());
             
-            pendingMessages.clear();
+            // Clear pending rows and reset count
+            pendingRows.clear();
             pendingRowCount.set(0);
             
             return successCount;
-        } catch (ExecutionException | InterruptedException | IOException | Descriptors.DescriptorValidationException e) {
+        } catch (Exception e) {
             log.error("Error flushing records to BigQuery using Storage Write API", e);
             return 0;
+        }
+    }
+    
+    /**
+     * Asynchronously flushes the pending rows
+     * This prevents blocking the calling thread (e.g., Kafka consumer)
+     */
+    public void flushAsync() {
+        if (!pendingRows.isEmpty()) {
+            executor.submit(this::flush);
+        }
+    }
+    
+    /**
+     * Scheduled periodic flush to handle "stragglers" - records that haven't reached the flush threshold
+     * This ensures data is eventually written to BigQuery even with low volume
+     */
+    @Scheduled(fixedDelayString = "${bigquery.flush-interval-ms:5000}")
+    public void scheduledFlush() {
+        int pendingCount = pendingRowCount.get();
+        if (pendingCount > 0) {
+            log.debug("Running scheduled flush for {} pending rows", pendingCount);
+            flushAsync();
         }
     }
     
     @PreDestroy
     public void cleanup() {
         try {
+            // Flush any remaining records
+            flush();
+            
+            // Close resources
             if (streamWriter != null) {
                 streamWriter.close();
             }
             if (writeClient != null) {
                 writeClient.close();
             }
+            
+            // Shutdown executor
+            executor.shutdown();
+            
+            log.info("BigQuery Storage Write API resources closed successfully");
         } catch (Exception e) {
             log.error("Error closing BigQuery Storage Write API resources", e);
         }
