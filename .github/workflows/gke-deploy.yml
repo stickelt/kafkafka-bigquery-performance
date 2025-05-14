@@ -22,19 +22,24 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
     - name: Set up gcloud CLI
       uses: google-github-actions/setup-gcloud@v1
       with:
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
         project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-    - name: Configure Docker for GCR
-      run: gcloud auth configure-docker gcr.io --quiet
-
-    - name: Build and Push Docker image to GCR
+    - name: Configure Docker to use gcloud as a credential helper
       run: |
-        docker build -t gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA .
-        docker push gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA
+        gcloud auth configure-docker us.gcr.io --quiet
+
+    - name: Build and Push Docker image
+      run: |
+        docker build -t us.gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA .
+        docker push us.gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA
 
     - name: Get GKE credentials
       uses: google-github-actions/get-gke-credentials@v1
@@ -59,7 +64,7 @@ jobs:
 
     - name: Deploy to GKE
       run: |
-        sed -i.bak "s|gcr.io/PROJECT_ID/kafka-bq-performance:VERSION|gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA|g" ./k8s/deployment.yaml
+        sed -i.bak "s|us.gcr.io/PROJECT_ID/kafka-bq-performance:VERSION|us.gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA|g" ./k8s/deployment.yaml
         kubectl apply -f ./k8s/deployment.yaml
         kubectl apply -f ./k8s/service.yaml
         kubectl rollout status deployment/kafka-bq-deployment
