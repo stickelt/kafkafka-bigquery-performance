@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: kafka-bq-container
-          image: us.gcr.io/PROJECT_ID/kafka-bq-performance:VERSION
+          image: gcr.io/PROJECT_ID/kafka-bq-performance:VERSION
           ports:
             - containerPort: 8080
           env:
