@@ -26,6 +26,10 @@ spec:
             - name: bigquery-credentials
               mountPath: "/app/config"
               readOnly: true
+            - name: app-config
+              mountPath: "/app/config/application-prod.properties"
+              subPath: application-prod.properties
+              readOnly: true
           resources:
             requests:
               memory: "512Mi"
@@ -37,3 +41,6 @@ spec:
         - name: bigquery-credentials
           secret:
             secretName: bigquery-credentials
+        - name: app-config
+          configMap:
+            name: kafka-bq-config

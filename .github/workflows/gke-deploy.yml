@@ -11,45 +11,63 @@ env:
   IMAGE: kafka-bq-performance
   REGION: us
   REPO: kafka-bq-images
+  BQ_PROJECT_ID: ${{ secrets.BQ_PROJECT_ID }}
+  BQ_DATASET: ${{ secrets.BQ_DATASET }}
+  BQ_TABLE: ${{ secrets.BQ_TABLE }}
 
 jobs:
-  build-deploy:
-    name: Build, Push, and Deploy
+  setup-build-publish-deploy:
+    name: Setup, Build, Publish, and Deploy
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
+    # Authenticate to Google Cloud
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+    # Set up gcloud CLI
     - name: Set up gcloud CLI
-      uses: google-github-actions/setup-gcloud@v1
+      uses: google-github-actions/setup-gcloud@v2
       with:
         project_id: ${{ secrets.GCP_PROJECT_ID }}
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
-        export_default_credentials: true
 
-    - name: Authenticate Docker with Artifact Registry
+    # Configure Docker for Artifact Registry
+    - name: Configure Docker
+      run: gcloud auth configure-docker us-docker.pkg.dev --quiet
+
+    # Build and push Docker image
+    - name: Build and Push Docker image to Artifact Registry
       run: |
-        gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+        docker build -t us-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$GITHUB_SHA .
+        docker push us-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$GITHUB_SHA
 
-    - name: Build Docker image
+    # Print Docker diagnostics
+    - name: Docker diagnostic info
       run: |
-        docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$GITHUB_SHA .
-        docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$GITHUB_SHA
+        docker info
+        docker system df
 
+    # Get GKE credentials
     - name: Get GKE credentials
       uses: google-github-actions/get-gke-credentials@v1
       with:
         cluster_name: ${{ env.GKE_CLUSTER }}
         location: ${{ env.GKE_ZONE }}
 
+    # Create BigQuery credentials secret
     - name: Create BigQuery credentials Secret
       run: |
-        echo "${{ secrets.BQ_CREDENTIALS }}" > credentials.json
+        echo '${{ secrets.BQ_CREDENTIALS }}' > credentials.json
         kubectl delete secret bigquery-credentials --ignore-not-found
         kubectl create secret generic bigquery-credentials --from-file=credentials.json=credentials.json
         rm credentials.json
 
+    # Apply configmap
     - name: Apply ConfigMap
       run: |
         sed -i.bak "s/\${BQ_PROJECT_ID}/${BQ_PROJECT_ID}/g" ./k8s/configmap.yaml
@@ -58,14 +76,16 @@ jobs:
         kubectl apply -f ./k8s/configmap.yaml
         rm ./k8s/configmap.yaml.bak
 
+    # Deploy to GKE
     - name: Deploy to GKE
       run: |
-        sed -i.bak "s|us.gcr.io/PROJECT_ID/kafka-bq-performance:VERSION|$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$GITHUB_SHA|g" ./k8s/deployment.yaml
+        sed -i.bak "s|us-docker.pkg.dev/PROJECT_ID/REPO/IMAGE:VERSION|us-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$GITHUB_SHA|g" ./k8s/deployment.yaml
         kubectl apply -f ./k8s/deployment.yaml
         kubectl apply -f ./k8s/service.yaml
         kubectl rollout status deployment/kafka-bq-deployment
         rm ./k8s/deployment.yaml.bak
 
+    # Get External IP
     - name: Get External IP
       run: |
         echo "Waiting for external IP..."
