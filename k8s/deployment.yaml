@@ -3,6 +3,7 @@ kind: Deployment
 metadata:
   name: kafka-bq-deployment
 spec:
+  progressDeadlineSeconds: 600
   replicas: 1
   selector:
     matchLabels:
@@ -30,6 +31,12 @@ spec:
               mountPath: "/app/config/application-prod.properties"
               subPath: application-prod.properties
               readOnly: true
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 10
           resources:
             requests:
               memory: "512Mi"
