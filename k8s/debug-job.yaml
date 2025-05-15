@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: debug-volumes-job
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    spec:
+      containers:
+      - name: debug-container
+        image: busybox
+        command: ["/bin/sh"]
+        args:
+        - "-c"
+        - "ls -la /app/credentials /app/config && cat /app/credentials/credentials.json | head -5 && cat /app/config/application-prod.properties && echo 'VOLUMES VERIFIED' && sleep 10"
+        volumeMounts:
+        - name: bigquery-credentials
+          mountPath: "/app/credentials"
+          readOnly: true
+        - name: app-config
+          mountPath: "/app/config/application-prod.properties"
+          subPath: "application-prod.properties"
+          readOnly: true
+      restartPolicy: Never
+      volumes:
+      - name: bigquery-credentials
+        secret:
+          secretName: bigquery-credentials
+      - name: app-config
+        configMap:
+          name: kafka-bq-config

@@ -31,27 +31,7 @@ spec:
               mountPath: "/app/config/application-prod.properties"
               subPath: application-prod.properties
               readOnly: true
-          startupProbe:
-            httpGet:
-              path: /actuator/health
-              port: 8080
-            failureThreshold: 30
-            periodSeconds: 10
-            initialDelaySeconds: 20
-          readinessProbe:
-            httpGet:
-              path: /actuator/health
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 3
-          livenessProbe:
-            httpGet:
-              path: /actuator/health
-              port: 8080
-            initialDelaySeconds: 60
-            periodSeconds: 15
-            failureThreshold: 5
+          # Health probes temporarily removed for debugging
           resources:
             requests:
               memory: "1Gi"
