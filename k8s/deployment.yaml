@@ -13,6 +13,10 @@ spec:
       labels:
         app: kafka-bq-app
     spec:
+      initContainers:
+      - name: debug-container
+        image: busybox
+        command: ['sh', '-c', 'echo "Debug container started" && sleep 3600']
       containers:
         - name: kafka-bq-container
           image: us-docker.pkg.dev/PROJECT_ID/kafka-bq-images/kafka-bq-performance:VERSION

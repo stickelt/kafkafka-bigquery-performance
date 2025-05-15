@@ -72,7 +72,19 @@ jobs:
       run: |
         kubectl apply -f ./k8s/deployment.yaml
         kubectl apply -f ./k8s/service.yaml
-        kubectl rollout status deployment/kafka-bq-deployment
+        echo "Waiting for pods to be created..."
+        sleep 30
+        echo "Pod status:"
+        kubectl get pods -l app=kafka-bq-app -o wide
+        echo "\nPod description:"
+        kubectl describe pods -l app=kafka-bq-app
+        echo "\nAttempting rollout status with timeout:"
+        timeout 60s kubectl rollout status deployment/kafka-bq-deployment || true
+        echo "\nChecking container logs (if any):"
+        POD_NAME=$(kubectl get pods -l app=kafka-bq-app -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
+        if [ -n "$POD_NAME" ]; then
+          kubectl logs $POD_NAME --all-containers=true || true
+        fi
         rm ./k8s/deployment.yaml.bak
 
     - name: Get External IP
