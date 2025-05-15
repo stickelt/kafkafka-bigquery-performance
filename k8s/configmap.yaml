@@ -10,11 +10,11 @@ data:
     bigquery.table=${BQ_TABLE}
     bigquery.flush-threshold=500
     bigquery.max-retry-attempts=3
-    
+
     # Disable Kafka for production deployment since we're using direct API testing
     spring.kafka.bootstrap-servers=none
     spring.kafka.consumer.enabled=false
-    
+
     # Logging Configuration
     logging.level.root=INFO
     logging.level.com.example.kafkabqperformance=DEBUG
