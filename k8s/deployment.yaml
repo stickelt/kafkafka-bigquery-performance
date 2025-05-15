@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: kafka-bq-container
-          image: us-docker.pkg.dev/PROJECT_ID/kafka-bq-images/kafka-bq-performance:VERSION
+          image: us-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE}:${GITHUB_SHA}
           ports:
             - containerPort: 8080
           env:

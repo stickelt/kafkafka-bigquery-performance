@@ -79,7 +79,7 @@ jobs:
     # Deploy to GKE
     - name: Deploy to GKE
       run: |
-        sed -i.bak "s|us-docker.pkg.dev/PROJECT_ID/REPO/IMAGE:VERSION|us-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$GITHUB_SHA|g" ./k8s/deployment.yaml
+        sed -i.bak "s|us-docker.pkg.dev/PROJECT_ID/kafka-bq-images/kafka-bq-performance:VERSION|us-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$GITHUB_SHA|g" ./k8s/deployment.yaml
         kubectl apply -f ./k8s/deployment.yaml
         kubectl apply -f ./k8s/service.yaml
         kubectl rollout status deployment/kafka-bq-deployment
